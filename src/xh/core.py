@@ -1,40 +1,76 @@
-"""Main module."""
+"""
+Core xh module.
 
-# xh.py - A Windows-compatible implementation mimicking the "sh" library API.
-# If not on Windows, you might simply set:
-#     from sh import *
-#     xh = sh
-#
-# This implementation supports:
-#  - Synchronous command execution (using communicate)
-#  - Background execution (_bg=True) with output callbacks (including interactive callbacks)
-#  - Asynchronous (_async=True) and iterative (_iter=True) interfaces.
-#
-# Note: This is a minimal reimplementation and may not cover all advanced features of sh.
+xh.py - A Windows-compatible implementation mimicking the "sh" library API.
+If not on Windows, you might simply set:
+    from sh import *
+    xh = sh
+
+This implementation supports:
+ - Synchronous command execution (using communicate)
+ - Background execution (_bg=True) with output callbacks
+  (including interactive callbacks)
+ - Asynchronous (_async=True) and iterative (_iter=True) interfaces.
+
+Note: This is a minimal reimplementation and may not cover all advanced
+  features of sh.
+"""
 
 import asyncio
 import inspect
-import os
 import subprocess
 import threading
 
+from typing import (
+    Any,
+    AsyncGenerator,
+    BinaryIO,
+    Callable,
+    Generator,
+    Optional,
+    cast,
+)
+
 
 class RunningCommand:
+    """
+    Class representing a running command process.
+
+    Parameters
+    ----------
+    process : subprocess.Popen[bytes]
+        The subprocess.Popen instance representing the command.
+    stdout_callback : Optional[Callable[..., Any]], optional
+        A callback function for processing STDOUT output.
+    stderr_callback : Optional[Callable[..., Any]], optional
+        A callback function for processing STDERR output.
+    done_callback : Optional[Callable[..., Any]], optional
+        A callback function that is invoked when the process terminates.
+    """
+
     def __init__(
         self,
-        process,
-        stdout_callback=None,
-        stderr_callback=None,
-        done_callback=None,
-    ):
+        process: subprocess.Popen[bytes],
+        stdout_callback: Optional[Callable[..., Any]] = None,
+        stderr_callback: Optional[Callable[..., Any]] = None,
+        done_callback: Optional[Callable[..., Any]] = None,
+    ) -> None:
         self.process = process
         self.stdout_callback = stdout_callback
         self.stderr_callback = stderr_callback
         self.done_callback = done_callback
-        self.stdout_thread = None
-        self.stderr_thread = None
+        self.stdout_thread: Optional[threading.Thread] = None
+        self.stderr_thread: Optional[threading.Thread] = None
 
-    def wait(self):
+    def wait(self) -> int:
+        """
+        Wait for the command to complete.
+
+        Returns
+        -------
+        int
+            The exit code of the process.
+        """
         if self.stdout_thread:
             self.stdout_thread.join()
         if self.stderr_thread:
@@ -44,21 +80,41 @@ class RunningCommand:
             self.done_callback(self, ret == 0, ret)
         return ret
 
-    def kill(self):
+    def kill(self) -> None:
+        """Kill the running process."""
         self.process.kill()
 
-    def terminate(self):
+    def terminate(self) -> None:
+        """Terminate the running process."""
         self.process.terminate()
 
 
-def read_stream(stream, callback, process, stdin):
+def read_stream(
+    stream: BinaryIO,
+    callback: Callable[..., Any],
+    process: subprocess.Popen[bytes],
+    stdin: Any,
+) -> None:
     """
-    Reads from a stream line by line and passes each line to the callback.
-    If the callback returns True, iteration stops.
-    Supports interactive callbacks by checking the callback’s signature:
+    Read from a stream line by line and pass each line to the callback.
+
+    If the callback returns True, the iteration stops.
+
+    The callback signature is inspected to determine the number of parameters:
       - 1 argument: callback(line)
       - 2 arguments: callback(line, stdin)
       - 3 or more arguments: callback(line, stdin, process)
+
+    Parameters
+    ----------
+    stream : BinaryIO
+        The stream (STDOUT or STDERR) to read from.
+    callback : Callable[..., Any]
+        The callback function to process each line.
+    process : subprocess.Popen[bytes]
+        The process associated with the stream.
+    stdin : Any
+        The STDIN of the process, used for interactive callbacks.
     """
     sig = inspect.signature(callback)
     num_params = len(sig.parameters)
@@ -68,7 +124,7 @@ def read_stream(stream, callback, process, stdin):
         try:
             decoded_line = line.decode()
         except UnicodeDecodeError:
-            decoded_line = line
+            decoded_line = line.decode('utf-8', errors='replace')
         if num_params == 1:
             result = callback(decoded_line)
         elif num_params == 2:
@@ -80,42 +136,68 @@ def read_stream(stream, callback, process, stdin):
     stream.close()
 
 
-def _run_command(command, *args, **kwargs):
+def _run_command(command: Any, *args: Any, **kwargs: Any) -> Any:
     """
-    Internal function that wraps subprocess.Popen to emulate sh’s API.
+    Wrap subprocess.Popen to emulate sh's API.
 
-    Recognized special keyword arguments:
-      _bg         : if True, run command in background and process output via callbacks.
-      _async      : if True, return an async generator that yields output.
-      _iter       : if True, return an iterator that yields output lines.
-      _out        : a callback for STDOUT output (can be interactive).
-      _err        : a callback for STDERR output.
-      _done       : a callback invoked when the process terminates.
-      _new_session: if True, launch the process in a new process group.
-      _out_bufsize and _err_bufsize: (not fully implemented) buffer size controls.
+    This function supports several special keyword arguments.
 
-    For non-background commands, if neither _async nor _iter is provided,
-    the function waits for completion and returns (stdout, stderr, exitcode).
+    Parameters
+    ----------
+    command : Any
+        The command to run.
+    *args : Any
+        Additional arguments for the command.
+    **kwargs : Any
+        Recognized special keyword arguments:
+            _bg : bool, optional
+                If True, run the command in the background and process output
+                via callbacks.
+            _async : bool, optional
+                If True, return an async generator that yields output.
+            _iter : bool, optional
+                If True, return an iterator that yields output lines.
+            _out : Callable, optional
+                A callback for STDOUT output (can be interactive).
+            _err : Callable, optional
+                A callback for STDERR output.
+            _done : Callable, optional
+                A callback invoked when the process terminates.
+            _new_session : bool, optional
+                If True, launch the process in a new process group.
+            _out_bufsize : int, optional
+                (Not fully implemented) Buffer size control for STDOUT.
+            _err_bufsize : int, optional
+                (Not fully implemented) Buffer size control for STDERR.
+
+    Returns
+    -------
+    Any
+        - If _bg is True, returns a RunningCommand instance.
+        - If _iter is True, returns an iterator yielding output lines.
+        - If _async is True, returns an async generator yielding output lines.
+        - Otherwise, waits for command completion and returns a tuple
+            (stdout, stderr, exitcode).
     """
-    _bg = kwargs.pop('_bg', False)
-    _async = kwargs.pop('_async', False)
-    _iter = kwargs.pop('_iter', False)
-    _out = kwargs.pop('_out', None)
-    _err = kwargs.pop('_err', None)
-    _done = kwargs.pop('_done', None)
-    _new_session = kwargs.pop('_new_session', True)
-    _out_bufsize = kwargs.pop('_out_bufsize', 1)
-    _err_bufsize = kwargs.pop('_err_bufsize', 1)
+    _bg: bool = kwargs.pop('_bg', False)
+    _async: bool = kwargs.pop('_async', False)
+    _iter: bool = kwargs.pop('_iter', False)
+    _out: Optional[Callable[..., Any]] = kwargs.pop('_out', None)
+    _err: Optional[Callable[..., Any]] = kwargs.pop('_err', None)
+    _done: Optional[Callable[..., Any]] = kwargs.pop('_done', None)
+    _new_session: bool = kwargs.pop('_new_session', True)
+    _out_bufsize: int = kwargs.pop('_out_bufsize', 1)
+    _err_bufsize: int = kwargs.pop('_err_bufsize', 1)
 
-    # Build the command list
-    cmd = [command] + list(args)
+    # Build the command list.
+    cmd = [command, *list(args)]
 
     # On Windows, _new_session can be simulated using CREATE_NEW_PROCESS_GROUP.
     creationflags = 0
     if _new_session and hasattr(subprocess, 'CREATE_NEW_PROCESS_GROUP'):
         creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
 
-    p = subprocess.Popen(
+    p: subprocess.Popen[bytes] = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -129,15 +211,19 @@ def _run_command(command, *args, **kwargs):
 
     if _bg:
         if _out:
+            # Ensure p.stdout is not None.
+            stdout_pipe = cast(BinaryIO, p.stdout)
             t = threading.Thread(
-                target=read_stream, args=(p.stdout, _out, p, p.stdin)
+                target=read_stream, args=(stdout_pipe, _out, p, p.stdin)
             )
             t.daemon = True
             t.start()
             rc.stdout_thread = t
         if _err:
+            # Ensure p.stderr is not None.
+            stderr_pipe = cast(BinaryIO, p.stderr)
             t = threading.Thread(
-                target=read_stream, args=(p.stderr, _err, p, p.stdin)
+                target=read_stream, args=(stderr_pipe, _err, p, p.stdin)
             )
             t.daemon = True
             t.start()
@@ -145,77 +231,85 @@ def _run_command(command, *args, **kwargs):
         return rc
     else:
         if _iter:
-            # Return a generator that yields each line of STDOUT.
-            def generator():
-                for line in iter(p.stdout.readline, b''):
+
+            def generator() -> Generator[str, None, None]:
+                """Generate yielding each line of STDOUT."""
+                # Ensure p.stdout is not None.
+                stdout_pipe = cast(BinaryIO, p.stdout)
+                for line in iter(stdout_pipe.readline, b''):
                     try:
                         decoded_line = line.decode()
                     except UnicodeDecodeError:
-                        decoded_line = line
+                        decoded_line = line.decode('utf-8', errors='replace')
                     yield decoded_line
-                p.stdout.close()
+                stdout_pipe.close()
                 p.wait()
                 if _done:
                     _done(rc, p.returncode == 0, p.returncode)
 
             return generator()
         elif _async:
-            # Return an async generator that yields each line from STDOUT.
-            async def async_generator():
+
+            async def async_generator() -> AsyncGenerator[str, None]:
+                """Generate Asynchronously yielding each line from STDOUT."""
+                # Ensure p.stdout is not None.
+                stdout_pipe = cast(BinaryIO, p.stdout)
                 loop = asyncio.get_event_loop()
                 while True:
-                    line = await loop.run_in_executor(None, p.stdout.readline)
+                    line = await loop.run_in_executor(
+                        None, stdout_pipe.readline
+                    )
                     if not line:
                         break
                     try:
                         decoded_line = line.decode()
                     except UnicodeDecodeError:
-                        decoded_line = line
+                        decoded_line = line.decode('utf-8', errors='replace')
                     yield decoded_line
-                p.stdout.close()
+                stdout_pipe.close()
                 ret = p.wait()
                 if _done:
                     _done(rc, ret == 0, ret)
 
             return async_generator()
         else:
-            # Synchronous mode: wait for command to complete and return output.
             stdout, stderr = p.communicate()
             if _done:
                 _done(rc, p.returncode == 0, p.returncode)
-            try:
-                stdout = stdout.decode()
-            except Exception:
-                pass
-            try:
-                stderr = stderr.decode()
-            except Exception:
-                pass
-            return stdout, stderr, p.returncode
+            stdout_str = (
+                stdout.decode('utf-8', errors='replace')
+                if stdout is not None
+                else ''
+            )
+            stderr_str = (
+                stderr.decode('utf-8', errors='replace')
+                if stderr is not None
+                else ''
+            )
+            return stdout_str, stderr_str, p.returncode
 
 
 class XH:
     """
     Mimics the sh library interface by turning attribute access into commands.
 
-    For example, xh.ls("-l", "/some/path") calls
-    _run_command("ls", "-l", "/some/path").
+    When an attribute is accessed (e.g. xh.ls), a function is returned that,
+    when called, invokes _run_command with the attribute name as the command.
+
+    Methods
+    -------
+    __getattr__(name: str) -> Callable[..., Any]
+        Returns a callable that executes the command with the given name.
     """
 
-    def __getattr__(self, name):
-        def command_func(*args, **kwargs):
+    def __getattr__(self, name: str) -> Callable[..., Any]:
+        def command_func(*args: Any, **kwargs: Any) -> Any:
             return _run_command(name, *args, **kwargs)
 
         return command_func
 
 
-# Export the xh object
+# Export the xh object.
 xh = XH()
 
-if __name__ == '__main__':
-    # Simple test: print "hello" using the platform's echo command.
-    # (On Windows, "echo" is a built-in command so you might need to adjust; this is just for demonstration.)
-    out, err, code = xh.echo('hello')
-    print('Output:', out)
-    print('Error:', err)
-    print('Exit code:', code)
+__all__ = ['xh']
