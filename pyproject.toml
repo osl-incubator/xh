@@ -1,5 +1,5 @@
 [project]
-name = "xh"
+name = "xhell"
 version = "0.1.1"  # semantic-release
 description = "Shell library for Windows and Wrapper for sh for Linux and MacOS"
 readme = "README.md"
