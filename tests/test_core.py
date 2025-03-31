@@ -1,6 +1,5 @@
 """Tests for xh package."""
 
-import asyncio
 import time
 
 import pytest
@@ -11,6 +10,7 @@ from xh import xh
 
 
 def test_synchronous_execution():
+    """Test synchronous execution."""
     # Use the current Python interpreter to print "hello"
     out, err, code = xh.python('-c', "print('hello')")
     assert code == 0
@@ -19,6 +19,7 @@ def test_synchronous_execution():
 
 
 def test_iterative_execution():
+    """Test iterative execution."""
     # Run a command that prints 0, 1, 2 on separate lines.
     gen = xh.python('-c', 'for i in range(3): print(i)', _iter=True)
     lines = [line.strip() for line in gen if line.strip() != '']
@@ -27,6 +28,7 @@ def test_iterative_execution():
 
 @pytest.mark.asyncio
 async def test_async_execution():
+    """Test async execution."""
     lines = []
     async for line in xh.python(
         '-c', 'for i in range(3): print(i)', _async=True
@@ -37,6 +39,7 @@ async def test_async_execution():
 
 
 def test_background_callback():
+    """Test background callback."""
     # This callback appends every line to a list.
     collected = []
 
@@ -56,6 +59,7 @@ def test_background_callback():
 
 
 def test_done_callback():
+    """Test done callback."""
     # Test that the done callback is invoked with the correct exit code.
     done_called = []
 
@@ -71,7 +75,12 @@ def test_done_callback():
 
 
 def test_interactive_callback():
-    # Test an interactive callback that stops further output processing when a condition is met.
+    """
+    Test an interactive callback.
+
+    Test an interactive callback that stops further output
+    processing when a condition is met."
+    """
     collected = []
 
     # This callback will stop processing after encountering "1".
@@ -89,6 +98,7 @@ def test_interactive_callback():
 
 
 def test_kill_process():
+    """Test kill process."""
     # Start a process that sleeps for 5 seconds in the background.
     p = xh.python('-c', 'import time; time.sleep(5)', _bg=True)
     # Allow a moment for the process to start.

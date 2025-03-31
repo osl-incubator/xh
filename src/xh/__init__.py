@@ -2,6 +2,8 @@
 
 from importlib import metadata as importlib_metadata
 
+from xh.core import xh
+
 
 def get_version() -> str:
     """Return the program version."""
@@ -17,5 +19,4 @@ __version__ = version
 __author__ = 'Ivan Ogasawara'
 __email__ = 'ivan.ogasawara@gmail.com'
 
-
-from xh.core import xh
+__all__ = ['xh']
