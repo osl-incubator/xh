@@ -21,7 +21,15 @@ import inspect
 import subprocess
 import threading
 
-from typing import Any, AsyncGenerator, BinaryIO, Callable, Generator, Optional
+from typing import (
+    Any,
+    AsyncGenerator,
+    BinaryIO,
+    Callable,
+    Generator,
+    Optional,
+    cast,
+)
 
 
 class RunningCommand:
@@ -30,7 +38,7 @@ class RunningCommand:
 
     Parameters
     ----------
-    process : subprocess.Popen
+    process : subprocess.Popen[bytes]
         The subprocess.Popen instance representing the command.
     stdout_callback : Optional[Callable[..., Any]], optional
         A callback function for processing STDOUT output.
@@ -42,7 +50,7 @@ class RunningCommand:
 
     def __init__(
         self,
-        process: subprocess.Popen,
+        process: subprocess.Popen[bytes],
         stdout_callback: Optional[Callable[..., Any]] = None,
         stderr_callback: Optional[Callable[..., Any]] = None,
         done_callback: Optional[Callable[..., Any]] = None,
@@ -84,7 +92,7 @@ class RunningCommand:
 def read_stream(
     stream: BinaryIO,
     callback: Callable[..., Any],
-    process: subprocess.Popen,
+    process: subprocess.Popen[bytes],
     stdin: Any,
 ) -> None:
     """
@@ -103,7 +111,7 @@ def read_stream(
         The stream (STDOUT or STDERR) to read from.
     callback : Callable[..., Any]
         The callback function to process each line.
-    process : subprocess.Popen
+    process : subprocess.Popen[bytes]
         The process associated with the stream.
     stdin : Any
         The STDIN of the process, used for interactive callbacks.
@@ -116,7 +124,7 @@ def read_stream(
         try:
             decoded_line = line.decode()
         except UnicodeDecodeError:
-            decoded_line = line
+            decoded_line = line.decode('utf-8', errors='replace')
         if num_params == 1:
             result = callback(decoded_line)
         elif num_params == 2:
@@ -132,7 +140,7 @@ def _run_command(command: Any, *args: Any, **kwargs: Any) -> Any:
     """
     Wrap subprocess.Popen to emulate sh's API.
 
-    This function supports several special keyword arguments:
+    This function supports several special keyword arguments.
 
     Parameters
     ----------
@@ -158,9 +166,9 @@ def _run_command(command: Any, *args: Any, **kwargs: Any) -> Any:
             _new_session : bool, optional
                 If True, launch the process in a new process group.
             _out_bufsize : int, optional
-                (Not fully implemented) Buffer size controls for STDOUT.
+                (Not fully implemented) Buffer size control for STDOUT.
             _err_bufsize : int, optional
-                (Not fully implemented) Buffer size controls for STDERR.
+                (Not fully implemented) Buffer size control for STDERR.
 
     Returns
     -------
@@ -189,7 +197,7 @@ def _run_command(command: Any, *args: Any, **kwargs: Any) -> Any:
     if _new_session and hasattr(subprocess, 'CREATE_NEW_PROCESS_GROUP'):
         creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
 
-    p = subprocess.Popen(
+    p: subprocess.Popen[bytes] = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -203,15 +211,19 @@ def _run_command(command: Any, *args: Any, **kwargs: Any) -> Any:
 
     if _bg:
         if _out:
+            # Ensure p.stdout is not None.
+            stdout_pipe = cast(BinaryIO, p.stdout)
             t = threading.Thread(
-                target=read_stream, args=(p.stdout, _out, p, p.stdin)
+                target=read_stream, args=(stdout_pipe, _out, p, p.stdin)
             )
             t.daemon = True
             t.start()
             rc.stdout_thread = t
         if _err:
+            # Ensure p.stderr is not None.
+            stderr_pipe = cast(BinaryIO, p.stderr)
             t = threading.Thread(
-                target=read_stream, args=(p.stderr, _err, p, p.stdin)
+                target=read_stream, args=(stderr_pipe, _err, p, p.stdin)
             )
             t.daemon = True
             t.start()
@@ -222,13 +234,15 @@ def _run_command(command: Any, *args: Any, **kwargs: Any) -> Any:
 
             def generator() -> Generator[str, None, None]:
                 """Generate yielding each line of STDOUT."""
-                for line in iter(p.stdout.readline, b''):
+                # Ensure p.stdout is not None.
+                stdout_pipe = cast(BinaryIO, p.stdout)
+                for line in iter(stdout_pipe.readline, b''):
                     try:
                         decoded_line = line.decode()
                     except UnicodeDecodeError:
-                        decoded_line = line
+                        decoded_line = line.decode('utf-8', errors='replace')
                     yield decoded_line
-                p.stdout.close()
+                stdout_pipe.close()
                 p.wait()
                 if _done:
                     _done(rc, p.returncode == 0, p.returncode)
@@ -237,18 +251,22 @@ def _run_command(command: Any, *args: Any, **kwargs: Any) -> Any:
         elif _async:
 
             async def async_generator() -> AsyncGenerator[str, None]:
-                """Asynchronous generator yielding each line from STDOUT."""
+                """Generate Asynchronously yielding each line from STDOUT."""
+                # Ensure p.stdout is not None.
+                stdout_pipe = cast(BinaryIO, p.stdout)
                 loop = asyncio.get_event_loop()
                 while True:
-                    line = await loop.run_in_executor(None, p.stdout.readline)
+                    line = await loop.run_in_executor(
+                        None, stdout_pipe.readline
+                    )
                     if not line:
                         break
                     try:
                         decoded_line = line.decode()
                     except UnicodeDecodeError:
-                        decoded_line = line
+                        decoded_line = line.decode('utf-8', errors='replace')
                     yield decoded_line
-                p.stdout.close()
+                stdout_pipe.close()
                 ret = p.wait()
                 if _done:
                     _done(rc, ret == 0, ret)
@@ -258,15 +276,17 @@ def _run_command(command: Any, *args: Any, **kwargs: Any) -> Any:
             stdout, stderr = p.communicate()
             if _done:
                 _done(rc, p.returncode == 0, p.returncode)
-            try:
-                stdout = stdout.decode()
-            except Exception:
-                pass
-            try:
-                stderr = stderr.decode()
-            except Exception:
-                pass
-            return stdout, stderr, p.returncode
+            stdout_str = (
+                stdout.decode('utf-8', errors='replace')
+                if stdout is not None
+                else ''
+            )
+            stderr_str = (
+                stderr.decode('utf-8', errors='replace')
+                if stderr is not None
+                else ''
+            )
+            return stdout_str, stderr_str, p.returncode
 
 
 class XH:
@@ -274,7 +294,7 @@ class XH:
     Mimics the sh library interface by turning attribute access into commands.
 
     When an attribute is accessed (e.g. xh.ls), a function is returned that,
-    when called, invokes _run_command with the attribute name as the command.s
+    when called, invokes _run_command with the attribute name as the command.
 
     Methods
     -------
