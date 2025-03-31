@@ -1,8 +1,20 @@
 """Xhell."""
 
+import sys
+
 from importlib import metadata as importlib_metadata
 
-from xh.core import xh
+# On non-Windows platforms, try to use sh; otherwise, use xh.core.
+if sys.platform != 'win32':
+    try:
+        import sh
+
+        Command = sh.Command
+        xh = sh
+    except ImportError:
+        from xh.core import Command, xh
+else:
+    from xh.core import Command, xh
 
 
 def get_version() -> str:
@@ -19,4 +31,11 @@ __version__ = version
 __author__ = 'Ivan Ogasawara'
 __email__ = 'ivan.ogasawara@gmail.com'
 
-__all__ = ['xh']
+__all__ = ['Command', 'xh']
+
+
+def __getattr__(name: str) -> object:
+    try:
+        return getattr(xh, name)
+    except AttributeError:
+        raise AttributeError(f'module {__name__} has no attribute {name}')

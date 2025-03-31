@@ -2783,6 +2783,7 @@ files = [
     {file = "sh-2.2.2-py3-none-any.whl", hash = "sha256:e0b15b4ae8ffcd399bc8ffddcbd770a43c7a70a24b16773fbb34c001ad5d52af"},
     {file = "sh-2.2.2.tar.gz", hash = "sha256:653227a7c41a284ec5302173fbc044ee817c7bad5e6e4d8d55741b9aeb9eb65b"},
 ]
+markers = {main = "platform_system != \"Windows\""}
 
 [[package]]
 name = "shellingham"
@@ -3152,4 +3153,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.9,<4"
-content-hash = "b1876f433137bfc5c46ae4cac0dd7331aeff22a9123f69ece2d9842e8379b11b"
+content-hash = "8b3e64f6a02467cb40fbe84f4e4ee34ce4d7da479e24556d1c27eb752c5d97af"
