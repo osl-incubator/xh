@@ -8,9 +8,15 @@ authors = [
 ]
 license = "BSD 3 Clause"
 requires-python = ">=3.9,<4"
+dependencies = [
+  'sh >=2 ; platform_system != "Windows"'
+]
+
+
 [build-system]
 requires = ["poetry-core>=2", "poetry>=2"]
 build-backend = "poetry.core.masonry.api"
+
 
 [tool.poetry]
 packages = [
@@ -49,9 +55,6 @@ makim = "1.20.0"
 pytest-asyncio = ">=0.26"
 
 
-
-[tool.poetry.dependencies]
-sh = ">=2"
 [tool.bandit]
 exclude_dirs = ["tests"]
 targets = "./"
