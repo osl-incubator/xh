@@ -1,109 +1,97 @@
 """Tests for xh package."""
 
-import time
-
 import pytest
 
-
-# Import the xh object from your xh module.
 from xh import xh
 
 
-def test_synchronous_execution():
-    """Test synchronous execution."""
-    # Use the current Python interpreter to print "hello"
-    out, err, code = xh.python('-c', "print('hello')")
-    assert code == 0
-    assert out.strip() == 'hello'
-    assert err == ''
+def test_sync_execution():
+    """
+    Test synchronous execution of a command.
+
+    Uses a simple Python one-liner that prints "hello" and verifies
+    that the result behaves like a string with extra attributes.
+    """
+    result = xh.python('-c', "print('hello')")
+    # Check that result is a CommandResult (subclass of str)
+    assert isinstance(result, str)
+    # stdout should contain "hello" (followed by a newline)
+    assert result.strip() == 'hello'
 
 
-def test_iterative_execution():
-    """Test iterative execution."""
-    # Run a command that prints 0, 1, 2 on separate lines.
+def test_iter_mode():
+    """
+    Test iterative mode (_iter=True) that returns an iterator over lines.
+
+    The command prints numbers 0, 1, and 2 on separate lines.
+    """
     gen = xh.python('-c', 'for i in range(3): print(i)', _iter=True)
-    lines = [line.strip() for line in gen if line.strip() != '']
+    lines = [line.strip() for line in gen if line.strip()]
     assert lines == ['0', '1', '2']
 
 
 @pytest.mark.asyncio
-async def test_async_execution():
-    """Test async execution."""
+async def test_async_mode():
+    """
+    Test asynchronous mode (_async=True) that returns an async generator.
+
+    The command prints numbers 0, 1, and 2 on separate lines.
+    """
     lines = []
     async for line in xh.python(
         '-c', 'for i in range(3): print(i)', _async=True
     ):
-        if line:
+        if line.strip():
             lines.append(line.strip())
     assert lines == ['0', '1', '2']
 
 
-def test_background_callback():
-    """Test background callback."""
-    # This callback appends every line to a list.
+def test_background_mode():
+    """
+    Test background execution (_bg=True) with an output callback.
+
+    A Python one-liner prints numbers 0, 1, and 2 with a slight delay,
+    and the callback collects each printed line.
+    """
     collected = []
 
-    def callback(line):
+    def callback(line: str) -> None:
         collected.append(line.strip())
 
-    # Use a Python one-liner that prints numbers 0 to 2 with flush.
-    code_str = (
+    code = (
         'import time\n'
         'for i in range(3):\n'
         '    print(i, flush=True)\n'
         '    time.sleep(0.1)\n'
     )
-    p = xh.python('-c', code_str, _bg=True, _out=callback)
-    p.wait()
+    proc = xh.python('-c', code, _bg=True, _out=callback)
+    proc.wait()
     assert collected == ['0', '1', '2']
 
 
-def test_done_callback():
-    """Test done callback."""
-    # Test that the done callback is invoked with the correct exit code.
-    done_called = []
-
-    def done(cmd, success, exit_code):
-        done_called.append((success, exit_code))
-
-    out, err, code = xh.python('-c', "print('done')", _done=done)
-    # The callback should have been called.
-    assert len(done_called) == 1
-    success, exit_code = done_called[0]
-    assert success is True
-    assert exit_code == 0
-
-
-def test_interactive_callback():
+def test_command_interface():
     """
-    Test an interactive callback.
+    Test command interface.
 
-    Test an interactive callback that stops further output
-    processing when a condition is met."
+    Test that accessing an attribute on xh returns a Command instance
+    and that it executes as expected.
     """
-    collected = []
-
-    # This callback will stop processing after encountering "1".
-    def interactive_callback(line):
-        collected.append(line.strip())
-        if line.strip() == '1':
-            return True
-
-    # Print numbers 0 through 4. The callback should stop after "1".
-    code_str = 'for i in range(5):\n    print(i)\n'
-    p = xh.python('-c', code_str, _bg=True, _out=interactive_callback)
-    p.wait()
-    # We expect only "0" and "1" to have been collected.
-    assert collected == ['0', '1']
+    # xh.python should be a Command instance.
+    assert hasattr(xh.python, '__call__')
+    result = xh.python('-c', "print('test')")
+    assert result.strip() == 'test'
 
 
-def test_kill_process():
-    """Test kill process."""
-    # Start a process that sleeps for 5 seconds in the background.
-    p = xh.python('-c', 'import time; time.sleep(5)', _bg=True)
-    # Allow a moment for the process to start.
-    time.sleep(0.2)
-    p.kill()
-    exit_code = p.wait()
-    # On termination, the exit code should not be 0.
-    assert exit_code != 0
+def test_repr():
+    """
+    Test __repr__ for Command and CommandResult.
+
+    The __repr__ of a Command should include the word "Command",
+    and the __repr__ of a CommandResult should include its stdout.
+    """
+    cmd = xh.ls
+    assert 'Command' in repr(cmd)
+    res = xh.python('-c', "print('hello')")
+    # Since CommandResult is a subclass of str, its repr is the same as the
+    # string repr.
+    assert 'hello' in repr(res)

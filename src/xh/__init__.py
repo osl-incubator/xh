@@ -34,8 +34,8 @@ __email__ = 'ivan.ogasawara@gmail.com'
 __all__ = ['Command', 'xh']
 
 
-def __getattr__(name: str) -> object:
+def __getattr__(name: str) -> str:
     try:
-        return getattr(xh, name)
+        return str(getattr(xh, name))
     except AttributeError:
         raise AttributeError(f'module {__name__} has no attribute {name}')
