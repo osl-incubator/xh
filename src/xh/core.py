@@ -335,11 +335,6 @@ def _run_command(command: Any, *args: Any, **kwargs: Any) -> Any:
             return CommandResult(stdout, stderr, p.returncode)
 
 
-###############################################################################
-# Command and XH: the public interface.
-###############################################################################
-
-
 class Command:
     """
     Represents a command.
@@ -415,7 +410,6 @@ class XH:
         return Command(name)
 
 
-# Export the xh object and Command class.
 xh = XH()
 
 __all__ = ['Command', 'CommandResult', 'xh']

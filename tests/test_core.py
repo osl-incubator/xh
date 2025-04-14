@@ -1,8 +1,7 @@
 """Tests for xh package."""
 
 import pytest
-
-from xh import xh
+import xh
 
 
 def test_sync_execution():

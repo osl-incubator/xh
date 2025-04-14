@@ -3,6 +3,7 @@
 import sys
 
 from importlib import metadata as importlib_metadata
+from typing import cast
 
 # On non-Windows platforms, try to use sh; otherwise, use xh.core.
 if sys.platform != 'win32':
@@ -34,8 +35,8 @@ __email__ = 'ivan.ogasawara@gmail.com'
 __all__ = ['Command', 'xh']
 
 
-def __getattr__(name: str) -> str:
+def __getattr__(name: str) -> Command:  # type: ignore[valid-type]
     try:
-        return str(getattr(xh, name))
+        return cast(Command, getattr(xh, name))  # type: ignore[valid-type]
     except AttributeError:
         raise AttributeError(f'module {__name__} has no attribute {name}')
