@@ -1,6 +1,13 @@
 # Release Notes
 ---
 
+## [0.2.1](https://github.com/osl-incubator/xh/compare/0.2.0...0.2.1) (2025-04-14)
+
+
+### Bug Fixes
+
+* Fix importing sh behavior ([#8](https://github.com/osl-incubator/xh/issues/8)) ([470a904](https://github.com/osl-incubator/xh/commit/470a904d67eb2a55cc3bea92bae410c597d1dad6))
+
 # [0.2.0](https://github.com/osl-incubator/xh/compare/0.1.1...0.2.0) (2025-04-01)
 
 
